@@ -1,0 +1,6 @@
+{
+  "name": "HeyCoach",
+  "description": "AI accountability coach with personalized personas, voice-first coaching, and goal tracking.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
