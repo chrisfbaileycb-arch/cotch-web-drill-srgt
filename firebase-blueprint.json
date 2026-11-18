@@ -1,0 +1,647 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Coaching profile preferences for an authenticated HeyCoach member (no PII).",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Member display name used by the coach.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "Optional avatar URL.",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "selectedPersona": {
+          "type": "string",
+          "description": "Active AI coach persona ID (built-in 'drill' | 'core' | 'builder' | 'zen' or custom agentId 'custom_*').",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "intensityLevel": {
+          "type": "integer",
+          "description": "Accountability intensity level from 1 (Gentle) to 5 (Maximum)."
+        },
+        "dailyTargetSessions": {
+          "type": "integer",
+          "description": "Target calendar sessions per day (1 to 20)."
+        },
+        "onboardingCompleted": {
+          "type": "boolean",
+          "description": "Whether initial coach onboarding is complete."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "selectedPersona",
+        "intensityLevel",
+        "dailyTargetSessions",
+        "onboardingCompleted",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPrivateAccount": {
+      "title": "UserPrivateAccount",
+      "description": "Strictly isolated PII (email) and 3-tier membership & Stripe billing state.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified account email isolated from public profile.",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "tier": {
+          "type": "string",
+          "description": "Membership tier: starter ($0), pro ($5/mo or $50/yr — 4 standard coaches), max ($10/mo or $100/yr — +4 custom Build-Your-Own agents).",
+          "enum": ["starter", "pro", "max"],
+          "maxLength": 16
+        },
+        "billingCycle": {
+          "type": "string",
+          "description": "Billing cadence: free, monthly, or annual upfront.",
+          "enum": ["free", "monthly", "annual"],
+          "maxLength": 16
+        },
+        "subscriptionStatus": {
+          "type": "string",
+          "description": "Current membership billing status.",
+          "enum": ["active", "trialing", "past_due", "canceled", "pending_stripe"],
+          "maxLength": 24
+        },
+        "priceCents": {
+          "type": "integer",
+          "description": "Billed amount in USD cents (0, 500, 5000, 1000, 10000)."
+        },
+        "annualSavingsCents": {
+          "type": "integer",
+          "description": "Annual discount savings in USD cents (0, 1000 for Pro, 2000 for Max $100/yr)."
+        },
+        "stripeMode": {
+          "type": "string",
+          "description": "Whether synced via live Stripe API or Stripe-ready sandbox preview.",
+          "enum": ["sandbox_preview", "live_stripe"],
+          "maxLength": 24
+        },
+        "stripeCustomerId": {
+          "type": "string",
+          "description": "Optional Stripe customer ID.",
+          "minLength": 0,
+          "maxLength": 128
+        },
+        "stripeSubscriptionId": {
+          "type": "string",
+          "description": "Optional Stripe subscription or session ID.",
+          "minLength": 0,
+          "maxLength": 128
+        },
+        "currentPeriodEndIso": {
+          "type": "string",
+          "description": "ISO timestamp when current billing cycle renews.",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "uid",
+        "email",
+        "tier",
+        "billingCycle",
+        "subscriptionStatus",
+        "priceCents",
+        "annualSavingsCents",
+        "stripeMode",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CustomAgent": {
+      "title": "CustomAgent",
+      "description": "Build-Your-Own AI Coach Persona & Accountability Agent (up to 4 custom slots on the $10/mo · $100/yr Max tier).",
+      "type": "object",
+      "properties": {
+        "agentId": {
+          "type": "string",
+          "description": "Unique custom agent document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "slotIndex": {
+          "type": "integer",
+          "description": "Dedicated custom agent slot index from 1 to 4."
+        },
+        "name": {
+          "type": "string",
+          "description": "Custom coach name (e.g., Iron Rep Coach, North Star Strategist).",
+          "minLength": 1,
+          "maxLength": 60
+        },
+        "specialty": {
+          "type": "string",
+          "description": "Coaching domain specialty.",
+          "enum": [
+            "Workout & Fitness",
+            "Goal Setting & Strategy",
+            "Deep Work & Output",
+            "Nutrition & Recovery",
+            "Finance & Wealth",
+            "Custom Accountability"
+          ],
+          "maxLength": 40
+        },
+        "tagline": {
+          "type": "string",
+          "description": "Short coaching motto or tagline.",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "coachingStyle": {
+          "type": "string",
+          "description": "Voice & delivery style.",
+          "enum": ["Tactical & Direct", "High-Energy Athletic", "Socratic & Strategic", "Calm & Analytical"],
+          "maxLength": 32
+        },
+        "accountabilityProtocol": {
+          "type": "string",
+          "description": "Specific accountability mandate enforced during check-ins and calendar blocks.",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "signaturePhrase": {
+          "type": "string",
+          "description": "Signature opening or closing coaching phrase.",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "accentColor": {
+          "type": "string",
+          "description": "Hex color token for the custom agent.",
+          "enum": ["#EF4444", "#F59E0B", "#10B981", "#06B6D4", "#8B5CF6", "#EC4899"],
+          "maxLength": 16
+        },
+        "defaultIntensity": {
+          "type": "integer",
+          "description": "Default accountability intensity level (1 to 5)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "agentId",
+        "userId",
+        "slotIndex",
+        "name",
+        "specialty",
+        "tagline",
+        "coachingStyle",
+        "accountabilityProtocol",
+        "signaturePhrase",
+        "accentColor",
+        "defaultIntensity",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Goal": {
+      "title": "Goal",
+      "description": "Accountability goal tracked across 6 life areas and backed by calendar blocks.",
+      "type": "object",
+      "properties": {
+        "goalId": {
+          "type": "string",
+          "description": "Unique goal document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Goal title.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "notes": {
+          "type": "string",
+          "description": "Optional success criteria or coaching context.",
+          "minLength": 0,
+          "maxLength": 500
+        },
+        "lifeArea": {
+          "type": "string",
+          "description": "Life area category.",
+          "enum": ["Work", "Health", "Learning", "Finance", "Creative", "Relationships"],
+          "maxLength": 24
+        },
+        "horizon": {
+          "type": "string",
+          "description": "Goal cadence horizon.",
+          "enum": ["daily", "weekly", "monthly"],
+          "maxLength": 16
+        },
+        "targetSessions": {
+          "type": "integer",
+          "description": "Target calendar sessions needed to fulfill goal."
+        },
+        "completedSessions": {
+          "type": "integer",
+          "description": "Completed sessions linked to this goal."
+        },
+        "scheduledSessions": {
+          "type": "integer",
+          "description": "Scheduled calendar blocks linked to this goal."
+        },
+        "status": {
+          "type": "string",
+          "description": "Goal lifecycle state (completed is terminal).",
+          "enum": ["active", "paused", "completed"],
+          "maxLength": 16
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "goalId",
+        "userId",
+        "title",
+        "lifeArea",
+        "horizon",
+        "targetSessions",
+        "completedSessions",
+        "scheduledSessions",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CoachingSession": {
+      "title": "CoachingSession",
+      "description": "Scheduled calendar execution block optionally linked to a Goal.",
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "description": "Unique session document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "title": {
+          "type": "string",
+          "description": "Session block title.",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "scheduledDate": {
+          "type": "string",
+          "description": "Calendar date in YYYY-MM-DD format.",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "startHour": {
+          "type": "integer",
+          "description": "Start hour in 24h format (0 to 23)."
+        },
+        "durationMinutes": {
+          "type": "integer",
+          "description": "Duration in minutes (15 to 240)."
+        },
+        "dayPart": {
+          "type": "string",
+          "description": "Time of day segment.",
+          "enum": ["morning", "midday", "evening"],
+          "maxLength": 16
+        },
+        "goalId": {
+          "type": "string",
+          "description": "Optional linked goalId.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "coachPersona": {
+          "type": "string",
+          "description": "Coach persona or custom agent ID supervising this block.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "snoozeCount": {
+          "type": "integer",
+          "description": "Number of times this block was snoozed."
+        },
+        "status": {
+          "type": "string",
+          "description": "Session execution state (completed is terminal).",
+          "enum": ["scheduled", "snoozed", "completed"],
+          "maxLength": 16
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "sessionId",
+        "userId",
+        "title",
+        "scheduledDate",
+        "startHour",
+        "durationMinutes",
+        "dayPart",
+        "coachPersona",
+        "snoozeCount",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CoachCheckin": {
+      "title": "CoachCheckin",
+      "description": "Immutable voice or text coaching dispatch log entry.",
+      "type": "object",
+      "properties": {
+        "checkinId": {
+          "type": "string",
+          "description": "Unique check-in log ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Member spoken or typed prompt.",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "coachReply": {
+          "type": "string",
+          "description": "Coach persona response.",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "persona": {
+          "type": "string",
+          "description": "Coach persona or custom agent ID that responded.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "intensityLevel": {
+          "type": "integer",
+          "description": "Intensity level (1-5) active during check-in."
+        },
+        "channel": {
+          "type": "string",
+          "description": "Interaction channel.",
+          "enum": ["voice", "text"],
+          "maxLength": 12
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        }
+      },
+      "required": [
+        "checkinId",
+        "userId",
+        "prompt",
+        "coachReply",
+        "persona",
+        "intensityLevel",
+        "channel",
+        "createdAt"
+      ]
+    },
+    "CheckoutIntent": {
+      "title": "CheckoutIntent",
+      "description": "Membership tier selection and Stripe checkout session audit record.",
+      "type": "object",
+      "properties": {
+        "intentId": {
+          "type": "string",
+          "description": "Unique checkout intent ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "tier": {
+          "type": "string",
+          "description": "Selected membership tier.",
+          "enum": ["starter", "pro", "max"],
+          "maxLength": 16
+        },
+        "billingCycle": {
+          "type": "string",
+          "description": "Selected billing cycle.",
+          "enum": ["free", "monthly", "annual"],
+          "maxLength": 16
+        },
+        "amountCents": {
+          "type": "integer",
+          "description": "Checkout total in USD cents."
+        },
+        "savingsCents": {
+          "type": "integer",
+          "description": "Annual savings in USD cents (e.g., 2000 = $20 saved on $100/yr Max plan)."
+        },
+        "checkoutMode": {
+          "type": "string",
+          "description": "Checkout mode at creation time.",
+          "enum": ["sandbox_preview", "live_stripe"],
+          "maxLength": 24
+        },
+        "stripeSessionId": {
+          "type": "string",
+          "description": "Optional Stripe Checkout Session ID.",
+          "minLength": 0,
+          "maxLength": 128
+        },
+        "status": {
+          "type": "string",
+          "description": "Checkout lifecycle status (activated and canceled are terminal).",
+          "enum": ["initiated", "activated", "canceled"],
+          "maxLength": 16
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "intentId",
+        "userId",
+        "tier",
+        "billingCycle",
+        "amountCents",
+        "savingsCents",
+        "checkoutMode",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted administrator lookup document managed strictly outside client writes.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Admin Firebase Auth UID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp."
+        }
+      },
+      "required": ["uid", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Member coaching preferences and non-PII profile."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": "UserPrivateAccount",
+      "description": "Isolated PII email and 3-tier membership & Stripe subscription state."
+    },
+    "/users/{userId}/customAgents/{agentId}": {
+      "schema": "CustomAgent",
+      "description": "Up to 4 custom Build-Your-Own AI Coach Personas & Accountability Agents (Max tier)."
+    },
+    "/users/{userId}/goals/{goalId}": {
+      "schema": "Goal",
+      "description": "Accountability goals owned by the member."
+    },
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": "CoachingSession",
+      "description": "Calendar execution sessions owned by the member."
+    },
+    "/users/{userId}/checkins/{checkinId}": {
+      "schema": "CoachCheckin",
+      "description": "Immutable voice and text coaching check-in history."
+    },
+    "/users/{userId}/checkoutIntents/{intentId}": {
+      "schema": "CheckoutIntent",
+      "description": "Audit log of membership tier selections and Stripe checkout sessions."
+    },
+    "/admins/{adminUid}": {
+      "schema": "AdminRecord",
+      "description": "Trusted administrator registry (read-only from client)."
+    }
+  }
+}

@@ -1,3 +1,5 @@
+import { useNavigate } from 'react-router-dom';
+
 const FLOATING_WORDS = [
   { text: '⚡ Execute.', color: 'text-red-400', delay: '0s', x: '8%', y: '20%' },
   { text: '🏆 Win.', color: 'text-amber-400', delay: '0.8s', x: '85%', y: '15%' },
@@ -6,6 +8,8 @@ const FLOATING_WORDS = [
 ];
 
 export default function HeroSection() {
+  const navigate = useNavigate();
+
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden noise-bg pt-24 pb-16">
       {/* Animated gradient background */}
@@ -44,13 +48,10 @@ export default function HeroSection() {
       <div className="relative z-10 max-w-7xl mx-auto px-6 grid lg:grid-cols-2 gap-12 items-center">
         {/* Left — copy */}
         <div>
-          {/* Badge */}
-          <div className="inline-flex items-center gap-2 bg-amber-500/15 border-2 border-amber-500/40 rounded-full px-4 py-1.5 mb-6 animate-slide-up">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-            <span className="text-amber-300 text-sm font-700" style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}>
-              Voice-First · AI-Powered · 4 Coach Personas
-            </span>
-          </div>
+          {/* Kicker */}
+          <p className="text-amber-300 text-sm font-bold mb-4 animate-slide-up" style={{ fontFamily: 'Nunito, sans-serif' }}>
+            Voice-First · 4 AI Coach Personas · Synced in Real Time
+          </p>
 
           {/* Headline */}
           <h1
@@ -75,25 +76,25 @@ export default function HeroSection() {
 
           {/* Sub */}
           <p className="text-lg text-gray-300 mb-8 max-w-lg leading-relaxed animate-slide-up delay-200" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
-            HeyCoach gives you a personal AI accountability partner who knows your goals, owns your calendar, and never lets you drift — in the style you need, at the intensity you choose.
+            HeyCoach gives you a personal AI accountability partner who knows your goals, owns your calendar, and never lets you drift — starting at $0, $5/mo Pro, or $10/mo Max ($100/yr saves $20).
           </p>
 
           {/* CTA row */}
           <div className="flex flex-wrap items-center gap-4 mb-8 animate-slide-up delay-300">
             <button
-              onClick={() => document.getElementById('cta')?.scrollIntoView({ behavior: 'smooth' })}
-              className="chunky-btn bg-amber-400 text-amber-900 px-8 py-4 rounded-2xl text-lg"
+              onClick={() => navigate('/app')}
+              className="chunky-btn bg-amber-400 text-amber-950 px-8 py-4 rounded-2xl text-lg whitespace-nowrap"
               style={{ borderColor: '#92400e', boxShadow: '5px 5px 0 #92400e' }}
             >
               Start Coaching Free 🏆
             </button>
             <button
-              onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
-              className="text-gray-300 hover:text-white font-700 flex items-center gap-2 transition-colors group"
-              style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 700 }}
+              onClick={() => document.getElementById('cta')?.scrollIntoView({ behavior: 'smooth' })}
+              className="text-gray-300 hover:text-white font-bold flex items-center gap-2 transition-colors group whitespace-nowrap"
+              style={{ fontFamily: 'Nunito, sans-serif' }}
             >
-              <span className="w-10 h-10 rounded-full border-2 border-gray-600 group-hover:border-amber-400 flex items-center justify-center transition-colors">▶</span>
-              See how it works
+              <span className="w-10 h-10 rounded-full border-2 border-gray-600 group-hover:border-amber-400 flex items-center justify-center transition-colors">→</span>
+              View 3-Tier Plans
             </button>
           </div>
 

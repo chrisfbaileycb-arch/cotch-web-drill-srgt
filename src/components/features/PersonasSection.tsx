@@ -1,4 +1,7 @@
+import { useNavigate } from 'react-router-dom';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
+import { useFirebase } from '@/contexts/FirebaseContext';
+import { getTierSpec, type CoachPersonaId } from '@/lib/membership';
 
 const PERSONAS = [
   {
@@ -59,7 +62,15 @@ const PERSONAS = [
   },
 ];
 
-function PersonaCard({ persona, index }: { persona: typeof PERSONAS[0]; index: number }) {
+function PersonaCard({
+  persona,
+  index,
+  onSelect,
+}: {
+  persona: typeof PERSONAS[0];
+  index: number;
+  onSelect: (id: CoachPersonaId) => void;
+}) {
   return (
     <div
       className="relative rounded-3xl p-6 flex flex-col gap-4 transition-all duration-300 hover:-translate-y-2 cursor-pointer fade-in-section"
@@ -154,7 +165,7 @@ function PersonaCard({ persona, index }: { persona: typeof PERSONAS[0]; index: n
           border: `2px solid ${persona.borderColor}`,
           boxShadow: `3px 3px 0 ${persona.shadowColor}`,
         }}
-        onClick={() => document.getElementById('cta')?.scrollIntoView({ behavior: 'smooth' })}
+        onClick={() => onSelect(persona.id as 'drill' | 'core' | 'builder' | 'zen')}
       >
         Pick {persona.name} →
       </button>
@@ -164,6 +175,26 @@ function PersonaCard({ persona, index }: { persona: typeof PERSONAS[0]; index: n
 
 export default function PersonasSection() {
   const titleRef = useScrollReveal();
+  const navigate = useNavigate();
+  const { user, account, updateCoachSettings, openCheckoutModal } = useFirebase();
+
+  const handlePickPersona = async (personaId: CoachPersonaId) => {
+    if (!user) {
+      if (personaId === 'core') {
+        navigate('/app');
+      } else {
+        openCheckoutModal('pro', 'annual');
+      }
+      return;
+    }
+    const spec = getTierSpec(account?.tier ?? 'starter');
+    if (!spec.allowedPersonas.includes(personaId)) {
+      openCheckoutModal('pro', 'annual');
+      return;
+    }
+    await updateCoachSettings({ selectedPersona: personaId });
+    navigate('/app');
+  };
 
   return (
     <section id="personas" className="py-24 px-6 relative overflow-hidden">
@@ -199,13 +230,75 @@ export default function PersonasSection() {
         {/* Cards grid */}
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {PERSONAS.map((persona, i) => (
-            <PersonaCard key={persona.id} persona={persona} index={i} />
+            <PersonaCard
+              key={persona.id}
+              persona={persona}
+              index={i}
+              onSelect={(id) => void handlePickPersona(id)}
+            />
           ))}
+        </div>
+
+        {/* Max Tier: Build Your Own Agent Studio (4 Custom Coach Slots) Banner */}
+        <div
+          className="mt-10 rounded-3xl p-6 sm:p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6"
+          style={{
+            background: 'linear-gradient(135deg, rgba(239,68,68,0.12) 0%, rgba(245,158,11,0.10) 100%)',
+            border: '2px solid rgba(239,68,68,0.45)',
+            boxShadow: '6px 6px 0 #7f1d1d',
+          }}
+        >
+          <div className="max-w-2xl">
+            <div className="text-xs font-black uppercase tracking-wider text-red-400 mb-2">
+              $10/mo · $100/yr Upfront (Save $20) · Max Tier Exclusive
+            </div>
+            <h3
+              className="text-2xl sm:text-3xl font-black text-white mb-2"
+              style={{ fontFamily: 'Nunito, sans-serif' }}
+            >
+              Want a Custom Workout Coach or Goal-Setting Strategist? Build 4 of Your Own Agents.
+            </h3>
+            <p className="text-sm text-gray-300 leading-relaxed mb-4">
+              While the $5/mo Pro plan unlocks the 4 standard coaches above, the $10/mo Max plan unlocks the{' '}
+              <strong className="text-white">Build Your Own Agent Studio</strong>. Engineer up to{' '}
+              <strong className="text-amber-400">4 additional custom persona & accountability coaches</strong> (8 coaches total) with custom specialties, strictness directives, and check-in cadences.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+              <div className="rounded-xl bg-[#11111a]/90 border border-white/10 px-3 py-2 text-gray-200 font-bold">
+                🏋️ Workout & Conditioning Coach
+              </div>
+              <div className="rounded-xl bg-[#11111a]/90 border border-white/10 px-3 py-2 text-gray-200 font-bold">
+                🎯 Goal-Setting Strategist
+              </div>
+              <div className="rounded-xl bg-[#11111a]/90 border border-white/10 px-3 py-2 text-gray-200 font-bold">
+                ⚡ Deep Work Sprint Lead
+              </div>
+              <div className="rounded-xl bg-[#11111a]/90 border border-white/10 px-3 py-2 text-gray-200 font-bold">
+                🥗 Nutrition & Recovery Guard
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0">
+            <button
+              onClick={() => navigate('/app?tab=studio')}
+              className="px-6 py-3.5 rounded-xl font-black text-sm text-[#0c0c14] bg-amber-400 hover:bg-amber-300 transition-colors whitespace-nowrap"
+              style={{ fontFamily: 'Nunito, sans-serif' }}
+            >
+              Open Agent Studio (4 Custom Slots) →
+            </button>
+            <button
+              onClick={() => openCheckoutModal('max', 'annual')}
+              className="px-6 py-3 rounded-xl font-bold text-xs text-white bg-white/10 hover:bg-white/15 border border-white/15 transition-colors whitespace-nowrap"
+            >
+              Unlock Max ($10/mo · $100/yr Save $20)
+            </button>
+          </div>
         </div>
 
         {/* Bottom note */}
         <p className="text-center text-gray-500 text-sm mt-8 font-600" style={{ fontFamily: 'Nunito, sans-serif', fontWeight: 600 }}>
-          Switch personas any time. Your calendar and goals stay put. 🔄
+          Switch between your 4 standard coaches and 4 custom-built agents any time. Your calendar and goals stay put. 🔄
         </p>
       </div>
     </section>

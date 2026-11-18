@@ -1,0 +1,736 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================
+    // GLOBAL SAFETY NET (Default Deny Catch-All)
+    // =========================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // =========================================================
+    // GLOBAL HARDENED PRIMITIVES
+    // =========================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() && (
+        request.auth.token.email == 'chrisfbailey.CB@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function userExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)) ||
+        existsAfter(/databases/$(database)/documents/users/$(userId));
+    }
+
+    function isBuiltInPersona(p) {
+      return p is string && p.size() <= 16 && p in ['drill', 'core', 'builder', 'zen'];
+    }
+
+    function isValidPersonaFormat(p) {
+      return isBuiltInPersona(p) || isValidId(p);
+    }
+
+    function personaExistsForUser(userId, p) {
+      return isBuiltInPersona(p) ||
+        exists(/databases/$(database)/documents/users/$(userId)/customAgents/$(p));
+    }
+
+    function hasMaxMembership(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)/private/account) &&
+        get(/databases/$(database)/documents/users/$(userId)/private/account).data.tier == 'max' &&
+        get(/databases/$(database)/documents/users/$(userId)/private/account).data.subscriptionStatus == 'active';
+    }
+
+    // =========================================================
+    // ENTITY VALIDATION BLUEPRINTS (Anti-Update-Gap)
+    // =========================================================
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll([
+          'uid',
+          'displayName',
+          'selectedPersona',
+          'intensityLevel',
+          'dailyTargetSessions',
+          'onboardingCompleted',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid',
+          'displayName',
+          'photoURL',
+          'selectedPersona',
+          'intensityLevel',
+          'dailyTargetSessions',
+          'onboardingCompleted',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+        data.uid == userId &&
+        data.uid == request.auth.uid &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+        (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+        isValidPersonaFormat(data.selectedPersona) &&
+        data.intensityLevel is int && data.intensityLevel >= 1 && data.intensityLevel <= 5 &&
+        data.dailyTargetSessions is int && data.dailyTargetSessions >= 1 && data.dailyTargetSessions <= 20 &&
+        data.onboardingCompleted is bool &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidPricingTuple(tier, cycle, priceCents, savingsCents) {
+      return (
+        (tier == 'starter' && cycle == 'free' && priceCents == 0 && savingsCents == 0) ||
+        (tier == 'pro' && cycle == 'monthly' && priceCents == 500 && savingsCents == 0) ||
+        (tier == 'pro' && cycle == 'annual' && priceCents == 5000 && savingsCents == 1000) ||
+        (tier == 'max' && cycle == 'monthly' && priceCents == 1000 && savingsCents == 0) ||
+        (tier == 'max' && cycle == 'annual' && priceCents == 10000 && savingsCents == 2000)
+      );
+    }
+
+    function isValidUserPrivateAccount(data, userId) {
+      return data.keys().hasAll([
+          'uid',
+          'email',
+          'tier',
+          'billingCycle',
+          'subscriptionStatus',
+          'priceCents',
+          'annualSavingsCents',
+          'stripeMode',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'uid',
+          'email',
+          'tier',
+          'billingCycle',
+          'subscriptionStatus',
+          'priceCents',
+          'annualSavingsCents',
+          'stripeMode',
+          'stripeCustomerId',
+          'stripeSubscriptionId',
+          'currentPeriodEndIso',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 &&
+        data.uid == userId &&
+        data.uid == request.auth.uid &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+        data.email == request.auth.token.email &&
+        data.tier is string && data.tier.size() <= 16 && data.tier in ['starter', 'pro', 'max'] &&
+        data.billingCycle is string && data.billingCycle.size() <= 16 && data.billingCycle in ['free', 'monthly', 'annual'] &&
+        data.subscriptionStatus is string && data.subscriptionStatus.size() <= 24 &&
+        data.subscriptionStatus in ['active', 'trialing', 'past_due', 'canceled', 'pending_stripe'] &&
+        data.priceCents is int &&
+        data.annualSavingsCents is int &&
+        isValidPricingTuple(data.tier, data.billingCycle, data.priceCents, data.annualSavingsCents) &&
+        data.stripeMode is string && data.stripeMode.size() <= 24 && data.stripeMode in ['sandbox_preview', 'live_stripe'] &&
+        (!('stripeCustomerId' in data) || (data.stripeCustomerId is string && data.stripeCustomerId.size() <= 128)) &&
+        (!('stripeSubscriptionId' in data) || (data.stripeSubscriptionId is string && data.stripeSubscriptionId.size() <= 128)) &&
+        (!('currentPeriodEndIso' in data) || (data.currentPeriodEndIso is string && data.currentPeriodEndIso.size() <= 40)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCustomAgent(data, userId, agentId) {
+      return data.keys().hasAll([
+          'agentId',
+          'userId',
+          'slotIndex',
+          'name',
+          'specialty',
+          'tagline',
+          'coachingStyle',
+          'accountabilityProtocol',
+          'signaturePhrase',
+          'accentColor',
+          'defaultIntensity',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'agentId',
+          'userId',
+          'slotIndex',
+          'name',
+          'specialty',
+          'tagline',
+          'coachingStyle',
+          'accountabilityProtocol',
+          'signaturePhrase',
+          'accentColor',
+          'defaultIntensity',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.agentId is string && data.agentId.size() >= 1 && data.agentId.size() <= 128 &&
+        data.agentId == agentId &&
+        data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+        data.userId == userId &&
+        data.userId == request.auth.uid &&
+        data.slotIndex is int && data.slotIndex >= 1 && data.slotIndex <= 4 &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
+        data.specialty is string && data.specialty.size() <= 40 &&
+        data.specialty in [
+          'Workout & Fitness',
+          'Goal Setting & Strategy',
+          'Deep Work & Output',
+          'Nutrition & Recovery',
+          'Finance & Wealth',
+          'Custom Accountability'
+        ] &&
+        data.tagline is string && data.tagline.size() >= 1 && data.tagline.size() <= 100 &&
+        data.coachingStyle is string && data.coachingStyle.size() <= 32 &&
+        data.coachingStyle in [
+          'Tactical & Direct',
+          'High-Energy Athletic',
+          'Socratic & Strategic',
+          'Calm & Analytical'
+        ] &&
+        data.accountabilityProtocol is string && data.accountabilityProtocol.size() >= 1 && data.accountabilityProtocol.size() <= 300 &&
+        data.signaturePhrase is string && data.signaturePhrase.size() >= 1 && data.signaturePhrase.size() <= 160 &&
+        data.accentColor is string && data.accentColor.size() <= 16 &&
+        data.accentColor in ['#EF4444', '#F59E0B', '#10B981', '#06B6D4', '#8B5CF6', '#EC4899'] &&
+        data.defaultIntensity is int && data.defaultIntensity >= 1 && data.defaultIntensity <= 5 &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidGoal(data, userId, goalId) {
+      return data.keys().hasAll([
+          'goalId',
+          'userId',
+          'title',
+          'lifeArea',
+          'horizon',
+          'targetSessions',
+          'completedSessions',
+          'scheduledSessions',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'goalId',
+          'userId',
+          'title',
+          'notes',
+          'lifeArea',
+          'horizon',
+          'targetSessions',
+          'completedSessions',
+          'scheduledSessions',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.goalId is string && data.goalId.size() >= 1 && data.goalId.size() <= 128 &&
+        data.goalId == goalId &&
+        data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+        data.userId == userId &&
+        data.userId == request.auth.uid &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+        (!('notes' in data) || (data.notes is string && data.notes.size() <= 500)) &&
+        data.lifeArea is string && data.lifeArea.size() <= 24 &&
+        data.lifeArea in ['Work', 'Health', 'Learning', 'Finance', 'Creative', 'Relationships'] &&
+        data.horizon is string && data.horizon.size() <= 16 && data.horizon in ['daily', 'weekly', 'monthly'] &&
+        data.targetSessions is int && data.targetSessions >= 1 && data.targetSessions <= 50 &&
+        data.completedSessions is int && data.completedSessions >= 0 && data.completedSessions <= 500 &&
+        data.scheduledSessions is int && data.scheduledSessions >= 0 && data.scheduledSessions <= 500 &&
+        data.status is string && data.status.size() <= 16 && data.status in ['active', 'paused', 'completed'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCoachingSession(data, userId, sessionId) {
+      return data.keys().hasAll([
+          'sessionId',
+          'userId',
+          'title',
+          'scheduledDate',
+          'startHour',
+          'durationMinutes',
+          'dayPart',
+          'coachPersona',
+          'snoozeCount',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'sessionId',
+          'userId',
+          'title',
+          'scheduledDate',
+          'startHour',
+          'durationMinutes',
+          'dayPart',
+          'goalId',
+          'coachPersona',
+          'snoozeCount',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.sessionId is string && data.sessionId.size() >= 1 && data.sessionId.size() <= 128 &&
+        data.sessionId == sessionId &&
+        data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+        data.userId == userId &&
+        data.userId == request.auth.uid &&
+        data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+        data.scheduledDate is string && data.scheduledDate.size() == 10 &&
+        data.scheduledDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') &&
+        data.startHour is int && data.startHour >= 0 && data.startHour <= 23 &&
+        data.durationMinutes is int && data.durationMinutes >= 15 && data.durationMinutes <= 240 &&
+        data.dayPart is string && data.dayPart.size() <= 16 && data.dayPart in ['morning', 'midday', 'evening'] &&
+        (!('goalId' in data) || isValidId(data.goalId)) &&
+        isValidPersonaFormat(data.coachPersona) &&
+        data.snoozeCount is int && data.snoozeCount >= 0 && data.snoozeCount <= 20 &&
+        data.status is string && data.status.size() <= 16 && data.status in ['scheduled', 'snoozed', 'completed'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCoachCheckin(data, userId, checkinId) {
+      return data.keys().hasAll([
+          'checkinId',
+          'userId',
+          'prompt',
+          'coachReply',
+          'persona',
+          'intensityLevel',
+          'channel',
+          'createdAt'
+        ]) &&
+        data.keys().hasOnly([
+          'checkinId',
+          'userId',
+          'prompt',
+          'coachReply',
+          'persona',
+          'intensityLevel',
+          'channel',
+          'createdAt'
+        ]) &&
+        data.checkinId is string && data.checkinId.size() >= 1 && data.checkinId.size() <= 128 &&
+        data.checkinId == checkinId &&
+        data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+        data.userId == userId &&
+        data.userId == request.auth.uid &&
+        data.prompt is string && data.prompt.size() >= 1 && data.prompt.size() <= 400 &&
+        data.coachReply is string && data.coachReply.size() >= 1 && data.coachReply.size() <= 1000 &&
+        isValidPersonaFormat(data.persona) &&
+        data.intensityLevel is int && data.intensityLevel >= 1 && data.intensityLevel <= 5 &&
+        data.channel is string && data.channel.size() <= 12 && data.channel in ['voice', 'text'] &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidCheckoutIntent(data, userId, intentId) {
+      return data.keys().hasAll([
+          'intentId',
+          'userId',
+          'tier',
+          'billingCycle',
+          'amountCents',
+          'savingsCents',
+          'checkoutMode',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.keys().hasOnly([
+          'intentId',
+          'userId',
+          'tier',
+          'billingCycle',
+          'amountCents',
+          'savingsCents',
+          'checkoutMode',
+          'stripeSessionId',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ]) &&
+        data.intentId is string && data.intentId.size() >= 1 && data.intentId.size() <= 128 &&
+        data.intentId == intentId &&
+        data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+        data.userId == userId &&
+        data.userId == request.auth.uid &&
+        data.tier is string && data.tier.size() <= 16 && data.tier in ['starter', 'pro', 'max'] &&
+        data.billingCycle is string && data.billingCycle.size() <= 16 && data.billingCycle in ['free', 'monthly', 'annual'] &&
+        data.amountCents is int && data.amountCents >= 0 && data.amountCents <= 100000 &&
+        data.savingsCents is int && data.savingsCents >= 0 && data.savingsCents <= 100000 &&
+        isValidPricingTuple(data.tier, data.billingCycle, data.amountCents, data.savingsCents) &&
+        data.checkoutMode is string && data.checkoutMode.size() <= 24 && data.checkoutMode in ['sandbox_preview', 'live_stripe'] &&
+        (!('stripeSessionId' in data) || (data.stripeSessionId is string && data.stripeSessionId.size() <= 128)) &&
+        data.status is string && data.status.size() <= 16 && data.status in ['initiated', 'activated', 'canceled'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // =========================================================
+    // COLLECTION MATCH BLOCKS
+    // =========================================================
+
+    // 1. Trusted Admin Registry (System-Only Writes)
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && isValidId(adminUid) && (request.auth.uid == adminUid || isAdmin());
+      allow list: if false;
+      allow create, update, delete: if false;
+    }
+
+    // 2. Member Coaching Profile (Non-PII)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if false;
+
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        personaExistsForUser(userId, incoming().selectedPersona);
+
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUserProfile(incoming(), userId) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        personaExistsForUser(userId, incoming().selectedPersona) &&
+        (
+          isAdmin() ||
+          (
+            isOwner(userId) &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'displayName',
+              'photoURL',
+              'selectedPersona',
+              'intensityLevel',
+              'dailyTargetSessions',
+              'onboardingCompleted',
+              'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isVerifiedUser() && isValidId(userId) && isAdmin();
+
+      // 3. Isolated PII & 3-Tier Membership Subscription State
+      match /private/{docId} {
+        allow get: if isSignedIn() && isValidId(userId) && docId == 'account' && (isOwner(userId) || isAdmin());
+        allow list: if false;
+
+        allow create: if isVerifiedUser() &&
+          isValidId(userId) &&
+          docId == 'account' &&
+          isOwner(userId) &&
+          isValidUserPrivateAccount(incoming(), userId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          userExists(userId);
+
+        allow update: if isVerifiedUser() &&
+          isValidId(userId) &&
+          docId == 'account' &&
+          isValidUserPrivateAccount(incoming(), userId) &&
+          incoming().uid == existing().uid &&
+          incoming().email == existing().email &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          userExists(userId) &&
+          (
+            isAdmin() ||
+            (
+              isOwner(userId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'tier',
+                'billingCycle',
+                'subscriptionStatus',
+                'priceCents',
+                'annualSavingsCents',
+                'stripeMode',
+                'stripeCustomerId',
+                'stripeSubscriptionId',
+                'currentPeriodEndIso',
+                'updatedAt'
+              ])
+            )
+          );
+
+        allow delete: if isVerifiedUser() && isValidId(userId) && docId == 'account' && isAdmin();
+      }
+
+      // 4. Build-Your-Own AI Coach Personas (Up to 4 Custom Agent Slots on Max Tier)
+      match /customAgents/{agentId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(agentId) && (isOwner(userId) || isAdmin());
+        allow list: if isSignedIn() && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+
+        allow create: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(agentId) &&
+          isOwner(userId) &&
+          isValidCustomAgent(incoming(), userId, agentId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          userExists(userId) &&
+          (hasMaxMembership(userId) || isAdmin());
+
+        allow update: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(agentId) &&
+          isValidCustomAgent(incoming(), userId, agentId) &&
+          incoming().agentId == existing().agentId &&
+          incoming().userId == existing().userId &&
+          incoming().slotIndex == existing().slotIndex &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          userExists(userId) &&
+          (
+            isAdmin() ||
+            (
+              isOwner(userId) &&
+              hasMaxMembership(userId) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'name',
+                'specialty',
+                'tagline',
+                'coachingStyle',
+                'accountabilityProtocol',
+                'signaturePhrase',
+                'accentColor',
+                'defaultIntensity',
+                'updatedAt'
+              ])
+            )
+          );
+
+        allow delete: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(agentId) &&
+          (isOwner(userId) || isAdmin()) &&
+          userExists(userId);
+      }
+
+      // 5. Accountability Goals
+      match /goals/{goalId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(goalId) && (isOwner(userId) || isAdmin());
+        allow list: if isSignedIn() && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+
+        allow create: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(goalId) &&
+          isOwner(userId) &&
+          isValidGoal(incoming(), userId, goalId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          userExists(userId);
+
+        allow update: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(goalId) &&
+          isValidGoal(incoming(), userId, goalId) &&
+          incoming().goalId == existing().goalId &&
+          incoming().userId == existing().userId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          userExists(userId) &&
+          (
+            isAdmin() ||
+            (
+              isOwner(userId) &&
+              existing().status != 'completed' &&
+              (
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'title',
+                  'notes',
+                  'lifeArea',
+                  'horizon',
+                  'targetSessions',
+                  'completedSessions',
+                  'scheduledSessions',
+                  'status',
+                  'updatedAt'
+                ])
+              )
+            )
+          );
+
+        allow delete: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(goalId) &&
+          (isOwner(userId) || isAdmin()) &&
+          userExists(userId);
+      }
+
+      // 6. Calendar Coaching Sessions
+      match /sessions/{sessionId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(sessionId) && (isOwner(userId) || isAdmin());
+        allow list: if isSignedIn() && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+
+        allow create: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(sessionId) &&
+          isOwner(userId) &&
+          isValidCoachingSession(incoming(), userId, sessionId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          userExists(userId) &&
+          personaExistsForUser(userId, incoming().coachPersona) &&
+          (
+            !('goalId' in incoming()) ||
+            exists(/databases/$(database)/documents/users/$(userId)/goals/$(incoming().goalId))
+          );
+
+        allow update: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(sessionId) &&
+          isValidCoachingSession(incoming(), userId, sessionId) &&
+          incoming().sessionId == existing().sessionId &&
+          incoming().userId == existing().userId &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          userExists(userId) &&
+          personaExistsForUser(userId, incoming().coachPersona) &&
+          (
+            !('goalId' in incoming()) ||
+            exists(/databases/$(database)/documents/users/$(userId)/goals/$(incoming().goalId))
+          ) &&
+          (
+            isAdmin() ||
+            (
+              isOwner(userId) &&
+              existing().status != 'completed' &&
+              (
+                // Action 1: Complete or Snooze Session
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'status',
+                  'snoozeCount',
+                  'scheduledDate',
+                  'startHour',
+                  'dayPart',
+                  'updatedAt'
+                ]) ||
+                // Action 2: Reschedule or Edit Session Block
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'title',
+                  'scheduledDate',
+                  'startHour',
+                  'durationMinutes',
+                  'dayPart',
+                  'goalId',
+                  'coachPersona',
+                  'updatedAt'
+                ])
+              )
+            )
+          );
+
+        allow delete: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(sessionId) &&
+          (isOwner(userId) || isAdmin()) &&
+          userExists(userId);
+      }
+
+      // 7. Voice & Text Coach Check-Ins (Append-Only Immutable History)
+      match /checkins/{checkinId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(checkinId) && (isOwner(userId) || isAdmin());
+        allow list: if isSignedIn() && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+
+        allow create: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(checkinId) &&
+          isOwner(userId) &&
+          isValidCoachCheckin(incoming(), userId, checkinId) &&
+          incoming().createdAt == request.time &&
+          userExists(userId) &&
+          personaExistsForUser(userId, incoming().persona);
+
+        allow update: if false;
+
+        allow delete: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(checkinId) &&
+          (isOwner(userId) || isAdmin()) &&
+          userExists(userId);
+      }
+
+      // 8. Membership Checkout Intents & Stripe Audit Log
+      match /checkoutIntents/{intentId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(intentId) && (isOwner(userId) || isAdmin());
+        allow list: if isSignedIn() && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+
+        allow create: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(intentId) &&
+          isOwner(userId) &&
+          isValidCheckoutIntent(incoming(), userId, intentId) &&
+          incoming().createdAt == request.time &&
+          incoming().updatedAt == request.time &&
+          userExists(userId);
+
+        allow update: if isVerifiedUser() &&
+          isValidId(userId) &&
+          isValidId(intentId) &&
+          isValidCheckoutIntent(incoming(), userId, intentId) &&
+          incoming().intentId == existing().intentId &&
+          incoming().userId == existing().userId &&
+          incoming().tier == existing().tier &&
+          incoming().billingCycle == existing().billingCycle &&
+          incoming().amountCents == existing().amountCents &&
+          incoming().savingsCents == existing().savingsCents &&
+          incoming().createdAt == existing().createdAt &&
+          incoming().updatedAt == request.time &&
+          userExists(userId) &&
+          (
+            isAdmin() ||
+            (
+              isOwner(userId) &&
+              !(existing().status in ['activated', 'canceled']) &&
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'status',
+                'stripeSessionId',
+                'updatedAt'
+              ])
+            )
+          );
+
+        allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(intentId) && isAdmin();
+      }
+    }
+  }
+}

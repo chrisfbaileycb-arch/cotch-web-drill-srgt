@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useScrollReveal } from '@/hooks/useScrollReveal';
 
 const TABS = [
@@ -209,6 +210,7 @@ const TABS = [
 
 export default function FeaturesSection() {
   const [activeTab, setActiveTab] = useState(TABS[0].id);
+  const navigate = useNavigate();
   const titleRef = useScrollReveal();
   const active = TABS.find((t) => t.id === activeTab)!;
 
@@ -286,7 +288,7 @@ export default function FeaturesSection() {
             </ul>
 
             <button
-              onClick={() => document.getElementById('cta')?.scrollIntoView({ behavior: 'smooth' })}
+              onClick={() => navigate(`/app?tab=${active.id === 'voice' ? 'coach' : active.id}`)}
               className="mt-8 px-6 py-3 rounded-xl font-black text-sm transition-all hover:brightness-110"
               style={{
                 background: active.color,
@@ -296,7 +298,7 @@ export default function FeaturesSection() {
                 boxShadow: `4px 4px 0 ${active.color}50`,
               }}
             >
-              Try This Feature →
+              Open {active.headline} in Workspace →
             </button>
           </div>
 

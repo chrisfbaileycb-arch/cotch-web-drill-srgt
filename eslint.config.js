@@ -3,15 +3,19 @@ import globals from "globals";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
+import firebaseRulesPlugin from "@firebase/eslint-plugin-security-rules";
 
-export default tseslint.config(
-  { ignores: ["dist"] },
-  {
+export default [
+  { ignores: ["dist/**/*"] },
+  ...tseslint.config({
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
     languageOptions: {
       ecmaVersion: 2020,
-      globals: globals.browser,
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
     },
     plugins: {
       "react-hooks": reactHooks,
@@ -25,5 +29,6 @@ export default tseslint.config(
       ],
       "@typescript-eslint/no-unused-vars": "off",
     },
-  }
-);
+  }),
+  firebaseRulesPlugin.configs["flat/recommended"],
+];
